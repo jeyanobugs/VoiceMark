@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>VoiceMark - Full Application Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Chart.js for Analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SheetJS for Export -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <!-- jsPDF & AutoTable for PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563EB',
+            secondary: '#64748B',
+            success: '#10B981',
+            danger: '#EF4444',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- MOCK DATABASE ---
+    let MOCK_USERS = JSON.parse(localStorage.getItem('VOICEMARK_USERS')) || { "prof_smith": "password123" };
+    let MOCK_FILES = JSON.parse(localStorage.getItem('VOICEMARK_FILES')) || [
+      { id: 1, name: "Marks_104021.xlsx", size: "15 KB", date: new Date().toLocaleDateString() }
+    ];
+
+    const getStudentsData = () => JSON.parse(localStorage.getItem('VOICEMARK_STUDENTS')) || [];
+    const saveStudentsData = (data) => localStorage.setItem('VOICEMARK_STUDENTS', JSON.stringify(data));
+
+    const saveUsers = () => localStorage.setItem('VOICEMARK_USERS', JSON.stringify(MOCK_USERS));
+    const saveFiles = () => localStorage.setItem('VOICEMARK_FILES', JSON.stringify(MOCK_FILES));
+
+    // --- ICONS (SVG Mocks) ---
+    const IconMic = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" x2="12" y1="19" y2="22" /></svg>;
+    const IconMicOff = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" x2="23" y1="1" y2="23" /><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.88" /><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" /><line x1="12" x2="12" y1="19" y2="22" /></svg>;
+    const IconDashboard = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>;
+    const IconFile = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg>;
+    const IconChart = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="18" y1="20" y2="10" /><line x1="12" x2="12" y1="20" y2="4" /><line x1="6" x2="6" y1="20" y2="14" /></svg>;
+
+    // --- NAVIGATION COMPONENT ---
+    const Navbar = ({ navigate, user, setAuth }) => (
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-10 px-6 py-4 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-8">
+          <h2 className="text-xl font-bold text-primary cursor-pointer" onClick={() => navigate('dashboard')}>VoiceMark</h2>
+          {user && (
+            <div className="hidden md:flex gap-6">
+              <button onClick={() => navigate('dashboard')} className="flex items-center gap-2 text-slate-500 hover:text-primary font-medium"><IconDashboard /> Dashboard</button>
+              <button onClick={() => navigate('mark-entry')} className="flex items-center gap-2 text-slate-500 hover:text-primary font-medium"><IconMic /> Mark Entry</button>
+              <button onClick={() => navigate('files')} className="flex items-center gap-2 text-slate-500 hover:text-primary font-medium"><IconFile /> Files</button>
+              <button onClick={() => navigate('analytics')} className="flex items-center gap-2 text-slate-500 hover:text-primary font-medium"><IconChart /> Analytics</button>
+            </div>
+          )}
+        </div>
+        {user && (
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium text-slate-600">Hi, {user}</span>
+            <button onClick={() => setAuth(null)} className="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50">Logout</button>
+          </div>
+        )}
+      </nav>
+    );
+
+    // --- LOGIN COMPONENT ---
+    const Login = ({ setAuth, navigate }) => {
+      const [u, setU] = useState('');
+      const [p, setP] = useState('');
+      const [err, setErr] = useState('');
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        const storedUsers = JSON.parse(localStorage.getItem('VOICEMARK_USERS')) || MOCK_USERS;
+        const cleanUser = u.trim();
+
+        if (storedUsers[cleanUser] === p) {
+          setAuth(cleanUser);
+          navigate('dashboard');
+        } else {
+          setErr('Invalid username or password. Please try again.');
+        }
+      };
+
+      return (
+        <div className="min-h-[80vh] flex items-center justify-center">
+          <div className="bg-white p-8 rounded-xl shadow-md border border-slate-100 max-w-sm w-full">
+            <h1 className="text-2xl font-bold text-primary mb-1 text-center">VoiceMark</h1>
+            <p className="text-sm text-slate-500 text-center mb-6">Faculty Login Portal</p>
+            {err && <div className="bg-red-50 text-red-600 p-2 rounded mb-4 text-sm text-center">{err}</div>}
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Username</label>
+                <input required value={u} onChange={e => setU(e.target.value)} className="w-full p-2 border rounded outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Password</label>
+                <input required type="password" value={p} onChange={e => setP(e.target.value)} className="w-full p-2 border rounded outline-none focus:border-primary" />
+              </div>
+              <button type="submit" className="w-full bg-primary hover:bg-blue-700 text-white font-medium p-2 rounded">Login</button>
+            </form>
+            <p className="text-center text-sm mt-4 text-slate-500">Don't have an account? <span onClick={() => navigate('signup')} className="text-primary cursor-pointer hover:underline">Sign up</span></p>
+          </div>
+        </div>
+      );
+    };
+
+    // --- SIGNUP COMPONENT ---
+    const Signup = ({ navigate }) => {
+      const [u, setU] = useState('');
+      const [p, setP] = useState('');
+      const [cp, setCp] = useState('');
+      const [err, setErr] = useState('');
+
+      const handleSignup = (e) => {
+        e.preventDefault();
+        const cleanUser = u.trim();
+        const storedUsers = JSON.parse(localStorage.getItem('VOICEMARK_USERS')) || MOCK_USERS;
+
+        if (p !== cp) return setErr('Passwords do not match');
+        if (storedUsers[cleanUser]) return setErr('Username exists');
+
+        storedUsers[cleanUser] = p;
+        localStorage.setItem('VOICEMARK_USERS', JSON.stringify(storedUsers));
+
+        alert('Signup successful! Your account is permanently saved. Please login.');
+        navigate('login');
+      };
+
+      return (
+        <div className="min-h-[80vh] flex items-center justify-center">
+          <div className="bg-white p-8 rounded-xl shadow-md border border-slate-100 max-w-sm w-full">
+            <h1 className="text-2xl font-bold text-primary mb-1 text-center">Create Account</h1>
+            <p className="text-sm text-slate-500 text-center mb-6">Sign up to VoiceMark</p>
+            {err && <div className="bg-red-50 text-red-600 p-2 rounded mb-4 text-sm text-center">{err}</div>}
+            <form onSubmit={handleSignup} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Username</label>
+                <input required value={u} onChange={e => setU(e.target.value)} className="w-full p-2 border rounded outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Password</label>
+                <input required type="password" value={p} onChange={e => setP(e.target.value)} className="w-full p-2 border rounded outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Confirm Password</label>
+                <input required type="password" value={cp} onChange={e => setCp(e.target.value)} className="w-full p-2 border rounded outline-none focus:border-primary" />
+              </div>
+              <button type="submit" className="w-full bg-primary hover:bg-blue-700 text-white font-medium p-2 rounded">Sign Up</button>
+            </form>
+            <p className="text-center text-sm mt-4 text-slate-500">Have an account? <span onClick={() => navigate('login')} className="text-primary cursor-pointer hover:underline">Log in</span></p>
+          </div>
+        </div>
+      );
+    };
+
+    // --- DASHBOARD COMPONENT ---
+    const Dashboard = ({ navigate }) => (
+      <div className="max-w-5xl mx-auto p-8">
+        <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div onClick={() => navigate('mark-entry')} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:border-primary transition group">
+            <h2 className="text-xl font-bold group-hover:text-primary">Mark Entry System ➔</h2>
+            <p className="text-slate-500 mt-2">Initialize voice-enabled mark entry interface</p>
+          </div>
+          <div onClick={() => navigate('files')} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:border-success transition group">
+            <h2 className="text-xl font-bold group-hover:text-success">File Management ➔</h2>
+            <p className="text-slate-500 mt-2">Access all saved Excel files and reports</p>
+          </div>
+        </div>
+      </div>
+    );
+
+    // --- USE VOICE HOOK ---
+    const useVoiceEntry = () => {
+      const [isListening, setIsListening] = useState(false);
+      const [interimText, setInterimText] = useState('');
+      const recognitionRef = useRef(null);
+      const WebSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      useEffect(() => {
+        if (!WebSpeechRecognition) return;
+        const recognition = new WebSpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true; // Enabled for better responsiveness
+        recognition.lang = 'en-US';
+        recognition.onerror = e => { console.error(e); setIsListening(false); };
+        recognitionRef.current = recognition;
+        return () => recognition.stop();
+      }, []);
+
+      const speak = (text) => new Promise(resolve => {
+        if (!text) return resolve();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.3; // Slightly faster speaking rate
+        u.onend = resolve;
+        window.speechSynthesis.speak(u);
+      });
+
+      const listenForInput = () => new Promise(resolve => {
+        if (!recognitionRef.current) return resolve('');
+        setIsListening(true);
+        setInterimText('');
+        recognitionRef.current.start();
+
+        const onResult = e => {
+          const transcript = Array.from(e.results)
+            .map(result => result[0])
+            .map(result => result.transcript)
+            .join(' ');
+          
+          setInterimText(transcript);
+
+          if (e.results[e.results.length - 1].isFinal) {
+            recognitionRef.current.removeEventListener('result', onResult);
+            setIsListening(false);
+            resolve(transcript.trim());
+          }
+        };
+
+        const onEnd = () => {
+          setIsListening(false);
+          resolve('');
+        };
+
+        recognitionRef.current.addEventListener('result', onResult);
+        recognitionRef.current.addEventListener('end', onEnd);
+      });
+
+      return { isListening, interimText, speak, listenForInput, WebSpeechRecognition };
+    };
+
+    // --- MARK ENTRY COMPONENT ---
+    const MarkEntry = ({ navigate }) => {
+      const [departmentCode, setDeptCode] = useState('104021');
+      const [students, setStudents] = useState(getStudentsData());
+      const [sortToast, setSortToast] = useState(false);
+      const [active, setActive] = useState(false);
+      const activeRef = useRef(false);
+      const [logs, setLogs] = useState([]);
+      const [multiplier, setMultiplier] = useState(1);
+      const [isFastMode, setIsFastMode] = useState(false);
+      const { speak, listenForInput, interimText, WebSpeechRecognition } = useVoiceEntry();
+
+      const adLog = msg => setLogs(p => [msg, ...p].slice(0, 10)); // Reversed for better reading
+
+      // Word to number mapper for spoken recognition
+      const wordToNumMap = {
+        'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9,
+        'ten': 10, 'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15, 'sixteen': 16,
+        'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
+        'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90, 'hundred': 100
+      };
+
+      const parseNumbers = (text) => {
+        if (!text) return '';
+        let cleanText = text.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+        
+        // Handle ABSENT keyword
+        if (cleanText.includes('absent')) return 'AB';
+        
+        // Match digits or number words
+        const parts = cleanText.split(' ');
+        let result = '';
+        parts.forEach(p => {
+          if (/[0-9]+/.test(p)) result += p.replace(/\D/g, '');
+          else if (wordToNumMap[p] !== undefined) result += wordToNumMap[p].toString();
+        });
+        
+        return result || cleanText.replace(/\D/g, '');
+      };
+
+      const runLoop = async () => {
+        if (!activeRef.current) return;
+        
+        // 1. REG NO
+        const prompt1 = isFastMode ? "Reg?" : "Tell me reg.no";
+        adLog(`System: "${prompt1}"`);
+        await speak(prompt1);
+        if (!activeRef.current) return;
+        
+        const regInput = await listenForInput();
+        if (!activeRef.current) return;
+        
+        const digits = parseNumbers(regInput);
+        if (!digits) { 
+          adLog('System: "Retry reg"');
+          await speak("Retry");
+          return setTimeout(runLoop, 200); 
+        }
+
+        const full = `${departmentCode}${digits.padStart(2, '0')}`;
+        adLog(`Confirmed Reg: ${full}`);
+
+        // 2. MARK
+        const prompt2 = isFastMode ? "Mark?" : "Tell me mark";
+        adLog(`System: "${prompt2}"`);
+        await speak(prompt2);
+        if (!activeRef.current) return;
+        
+        const markInput = await listenForInput();
+        if (!activeRef.current) return;
+
+        let baseMarkStr = parseNumbers(markInput);
+        if (!baseMarkStr) { 
+          adLog('System: "Retry mark"');
+          await speak("Retry");
+          return setTimeout(runLoop, 200); 
+        }
+
+        let calculatedMark = baseMarkStr === 'AB' ? 'AB' : parseInt(baseMarkStr) * multiplier;
+        adLog(`Entered Mark: ${calculatedMark}`);
+
+        if (!activeRef.current) return;
+        await speak(`${digits}, ok`);
+        if (!activeRef.current) return;
+
+        setStudents(p => {
+          const arr = [...p];
+          const ex = arr.findIndex(s => s.reg === full);
+          const entry = { reg: full, raw: baseMarkStr, total: calculatedMark, id: Math.random() };
+          if (ex >= 0) arr[ex] = entry;
+          else arr.unshift(entry); // New entries on top for visibility
+          saveStudentsData(arr);
+          return arr;
+        });
+        
+        setTimeout(runLoop, 300);
+      };
+
+      const toggleActive = () => {
+        if (active) {
+          // Stopping
+          activeRef.current = false;
+          setActive(false);
+          window.speechSynthesis.cancel(); // kill existing speech
+          speak("Thank you, entry stopped.");
+        } else {
+          // Starting
+          activeRef.current = true;
+          setActive(true);
+        }
+      };
+
+      useEffect(() => { if (active) runLoop(); }, [active, multiplier]);
+
+      const handleNewFile = () => {
+        if (students.length > 0) {
+          if (!confirm("Start new sheet? Your current marks will be automatically saved to the File Manager first.")) return;
+          MOCK_FILES.push({ 
+             id: Date.now(), name: `AutoSave_${Date.now()}.xlsx`, size: "12 KB", date: new Date().toLocaleDateString(), type: 'excel', payload: JSON.stringify(students)
+          });
+          saveFiles();
+        }
+        setStudents([]);
+        saveStudentsData([]);
+        alert("New File Created! Previous marks safely backed up to the Files module.");
+      };
+
+      const handleSort = () => {
+        setStudents(prev => {
+          const sorted = [...prev].sort((a, b) => {
+            // Extract last 2 digits of reg.no for comparison
+            const lastTwoA = parseInt(a.reg.slice(-2), 10);
+            const lastTwoB = parseInt(b.reg.slice(-2), 10);
+            return lastTwoA - lastTwoB;
+          });
+          saveStudentsData(sorted);
+          return sorted;
+        });
+        setSortToast(true);
+        setTimeout(() => setSortToast(false), 3000);
+      };
+
+      const handleDownload = () => {
+        if (students.length === 0) return alert('No data to download.');
+        // Always use full reg.no (with dept code) in export
+        const excelData = students.map(s => ({
+          "Register Number": s.reg,
+          "Base Mark": s.raw,
+          "Total": s.total
+        }));
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Marks");
+        XLSX.writeFile(wb, `Marks_${departmentCode}.xlsx`);
+        MOCK_FILES.push({ id: Date.now(), name: `Marks_${departmentCode}.xlsx`, size: "12 KB", date: new Date().toLocaleDateString(), type: 'excel', payload: JSON.stringify(students) });
+        saveFiles();
+        alert("Excel Generated and Saved to Files!");
+      };
+
+      if (!WebSpeechRecognition) return <div className="p-8 text-danger">Web Speech API not supported in this browser.</div>;
+
+      return (
+        <div className="max-w-6xl mx-auto p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="col-span-1 space-y-6">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <h2 className="text-xl font-bold mb-4">Voice Settings</h2>
+              
+              <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 rounded-lg text-primary border border-blue-100">
+                <input 
+                  type="checkbox" 
+                  id="fastMode" 
+                  checked={isFastMode} 
+                  onChange={e => setIsFastMode(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="fastMode" className="text-sm font-bold cursor-pointer uppercase tracking-tight">Fast Optimization Mode</label>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Dept Code</label>
+                <input value={departmentCode} onChange={e => setDeptCode(e.target.value)} className="w-full p-2 border rounded outline-none" />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Multiplier Buttons</label>
+                <div className="flex gap-2">
+                  <button onClick={() => setMultiplier(1)} className={`flex-1 py-1 px-3 border rounded ${multiplier === 1 ? 'bg-primary text-white' : ''}`}>x1</button>
+                  <button onClick={() => setMultiplier(2)} className={`flex-1 py-1 px-3 border rounded ${multiplier === 2 ? 'bg-primary text-white' : ''}`}>*2</button>
+                  <button onClick={() => setMultiplier(4)} className={`flex-1 py-1 px-3 border rounded ${multiplier === 4 ? 'bg-primary text-white' : ''}`}>*4</button>
+                </div>
+              </div>
+              <button className={`w-full p-3 text-white font-bold rounded flex items-center justify-center gap-2 ${active ? 'bg-danger' : 'bg-success'}`} onClick={toggleActive}>
+                {active ? <><IconMicOff /> Stop Session</> : <><IconMic /> Start Voice Entry</>}
+              </button>
+              <div className="flex gap-2 w-full mt-4">
+                <button onClick={handleNewFile} className="flex-1 p-3 border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 font-bold rounded transition">New File</button>
+                <button onClick={() => { activeRef.current = false; setActive(false); navigate('analytics'); }} className="flex-[2] p-3 border border-primary text-primary font-bold rounded hover:bg-blue-50">Analyze Data</button>
+              </div>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl text-white font-mono text-sm h-64 overflow-y-auto">
+              <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                <div className="text-slate-400 uppercase text-xs tracking-wider font-bold">Process Log</div>
+                {active && <div className="text-red-500 animate-pulse text-[10px] items-center flex gap-1"><div className="w-2 h-2 bg-red-500 rounded-full"></div> LISTENING</div>}
+              </div>
+              
+              {interimText && <div className="text-yellow-300 italic text-xs mb-2 bg-slate-800 p-2 rounded animate-pulse">Hearing: "{interimText}"...</div>}
+
+              {logs.map((l, i) => <div key={i} className={`mb-1 ${l.includes('System:') ? 'text-slate-500' : 'text-sky-400 font-bold'}`}> {l}</div>)}
+              {logs.length === 0 && <div className="text-slate-600">Click Start to begin marking.</div>}
+            </div>
+          </div>
+
+          <div className="col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[600px]">
+            <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <h2 className="font-bold text-lg">Excel Preview Table</h2>
+                {sortToast && (
+                  <span className="inline-flex items-center gap-1.5 bg-green-50 border border-green-200 text-green-700 text-xs font-semibold px-3 py-1 rounded-full animate-pulse">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    Sorted ascending by Reg.No
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSort}
+                  title="Sort by last 2 digits of Reg.No (ascending)"
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-sm font-bold flex items-center gap-1.5 transition"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="15" y2="12" />
+                    <line x1="3" y1="18" x2="9" y2="18" />
+                    <polyline points="17 15 20 18 23 15" />
+                    <line x1="20" y1="6" x2="20" y2="18" />
+                  </svg>
+                  Sort ↑
+                </button>
+                <button onClick={handleDownload} className="px-3 py-1.5 bg-primary text-white rounded text-sm font-medium">Download Excel</button>
+              </div>
+            </div>
+            <div className="overflow-auto flex-1 p-0">
+              <table className="w-full text-left">
+                <thead className="bg-white sticky top-0 border-b">
+                  <tr>
+                    <th className="p-4">Register Number</th>
+                    <th className="p-4 text-center">Spoken Mark</th>
+                    <th className="p-4">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {students.map(s => (
+                    <tr key={s.reg}>
+                      <td className="p-4 font-medium font-mono tracking-wide">{s.reg}</td>
+                      <td className="p-4 text-slate-500 text-center">{s.raw}</td>
+                      <td className={`p-4 font-bold ${s.total === 'AB' ? 'text-danger' : ''}`}>{s.total}</td>
+                    </tr>
+                  ))}
+                  {students.length === 0 && <tr><td colSpan="3" className="p-8 text-center text-slate-400">No data</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- FILE MANAGEMENT ---
+    const FileManagement = ({ navigate }) => {
+      const [files, setFiles] = useState(MOCK_FILES);
+
+      const del = id => { if (confirm("Delete file?")) { setFiles(f => f.filter(x => x.id !== id)); MOCK_FILES = MOCK_FILES.filter(x => x.id !== id); saveFiles(); } };
+
+      const doDownload = (f) => {
+        if (!f.payload) {
+          const ws = XLSX.utils.json_to_sheet([{ "System Status": "This legacy mock file has no real array memory." }]);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+          XLSX.writeFile(wb, f.name);
+          return;
+        }
+        
+        try {
+           const data = JSON.parse(f.payload);
+           if (f.type === 'pdf') {
+               const { jsPDF } = window.jspdf;
+               const doc = new jsPDF();
+               doc.setFontSize(16); doc.text("Recovered VoiceMark Report", 14, 20);
+               const tableData = data.map(s => [s.reg, s.raw, s.total, (s.total === 'AB' ? 'Absent' : s.total >= 50 ? 'Pass' : 'Fail')]);
+               doc.autoTable({ startY: 30, head: [['Register Number', 'Raw Mark', 'Total', 'Result']], body: tableData, theme: 'grid' });
+               doc.save(f.name);
+           } else {
+               const excelData = data.map(s => ({ "Register Number": s.reg, "Base Mark": s.raw, "Total": s.total }));
+               const ws = XLSX.utils.json_to_sheet(excelData);
+               const wb = XLSX.utils.book_new();
+               XLSX.utils.book_append_sheet(wb, ws, "Marks");
+               XLSX.writeFile(wb, f.name);
+           }
+        } catch(e) { alert("Corrupted memory cache."); }
+      };
+
+      return (
+        <div className="max-w-5xl mx-auto p-8">
+          <h1 className="text-2xl font-bold mb-6">Mark Files</h1>
+          <div className="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 border-b">
+                <tr><th className="p-4">File Name</th><th className="p-4">Size</th><th className="p-4">Date Created</th><th className="p-4">Actions</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {files.map(f => (
+                  <tr key={f.id}>
+                    <td className="p-4 text-primary font-medium cursor-pointer" onClick={() => alert(`Opening ${f.name} details feature...`)}>{f.name}</td>
+                    <td className="p-4 text-slate-500">{f.size}</td><td className="p-4 text-slate-500">{f.date}</td>
+                    <td className="p-4 flex gap-3">
+                      <button className="text-success text-sm font-medium" onClick={() => doDownload(f)}>Download</button>
+                      <button className="text-danger text-sm font-medium" onClick={() => del(f.id)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+                {files.length === 0 && <tr><td colSpan="4" className="p-8 text-center text-slate-400">No files stored.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    };
+
+    // --- ANALYTICS ---
+    const Analytics = () => {
+      const canvasRef = useRef(null);
+      const studentData = getStudentsData();
+
+      const statWrote = studentData.filter(s => s.total !== 'AB').length;
+      const statAbsent = studentData.filter(s => s.total === 'AB').length;
+      const statPass = studentData.filter(s => s.total !== 'AB' && s.total >= 50).length;
+      const statFail = studentData.filter(s => s.total !== 'AB' && s.total < 50).length;
+
+      const r1 = studentData.filter(s => s.total !== 'AB' && s.total < 50).length;
+      const r2 = studentData.filter(s => s.total >= 50 && s.total < 60).length;
+      const r3 = studentData.filter(s => s.total >= 60 && s.total < 70).length;
+      const r4 = studentData.filter(s => s.total >= 70 && s.total < 80).length;
+      const r5 = studentData.filter(s => s.total >= 80 && s.total < 90).length;
+      const r6 = studentData.filter(s => s.total >= 90 && s.total <= 100).length;
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        const ctx = canvasRef.current.getContext('2d');
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ['< 50 (Fail)', '50-60', '60-70', '70-80', '80-90', '90-100'],
+            datasets: [{ label: 'Students', data: [r1, r2, r3, r4, r5, r6], backgroundColor: '#2563EB' }]
+          }
+        });
+      }, [studentData]);
+
+      const downloadPDF = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        const f1 = studentData.filter(s => s.total !== 'AB' && s.total < 50).map(s => s.reg);
+        const f2 = studentData.filter(s => s.total >= 50 && s.total < 60).map(s => s.reg);
+        const f3 = studentData.filter(s => s.total >= 60 && s.total < 70).map(s => s.reg);
+        const f4 = studentData.filter(s => s.total >= 70 && s.total < 80).map(s => s.reg);
+        const f5 = studentData.filter(s => s.total >= 80 && s.total < 90).map(s => s.reg);
+        const f6 = studentData.filter(s => s.total >= 90 && s.total <= 100).map(s => s.reg);
+
+        const rangeTableData = [
+          ['Below 50 (Fail)', f1.length, f1.join(', ') || '-'],
+          ['50 - 60', f2.length, f2.join(', ') || '-'],
+          ['60 - 70', f3.length, f3.join(', ') || '-'],
+          ['70 - 80', f4.length, f4.join(', ') || '-'],
+          ['80 - 90', f5.length, f5.join(', ') || '-'],
+          ['90 - 100', f6.length, f6.join(', ') || '-']
+        ];
+
+        doc.setFontSize(20);
+        doc.text("VoiceMark Analytics Report", 14, 22);
+        doc.setFontSize(12);
+        doc.text(`Total Students Registered: ${studentData.length}`, 14, 32);
+        doc.text(`Wrote Exam: ${statWrote}`, 14, 40);
+        doc.text(`Passed: ${statPass}`, 14, 48);
+        doc.text(`Failed: ${statFail}`, 14, 56);
+        doc.text(`Absent: ${statAbsent}`, 14, 64);
+
+        // Failures List
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(220, 38, 38); // Red color for failures
+        const failuresText = `Failures List: ${f1.join(', ') || 'No Failures'}`;
+        const splitFailures = doc.splitTextToSize(failuresText, 180);
+        doc.text(splitFailures, 14, 74);
+        doc.setTextColor(0, 0, 0); // Reset color
+        let nextY = 74 + (splitFailures.length * 7);
+
+        // Range Wise Frequency Table
+        doc.autoTable({
+          startY: nextY,
+          head: [['Mark Range', 'Frequency', 'Student Register Numbers']],
+          body: rangeTableData,
+          theme: 'grid',
+          headStyles: { fillColor: [37, 99, 235] }
+        });
+
+        const tableData = studentData.map(s => [s.reg, s.raw, s.total, (s.total === 'AB' ? 'Absent' : s.total >= 50 ? 'Pass' : 'Fail')]);
+
+        doc.autoTable({
+          startY: doc.lastAutoTable.finalY + 10,
+          head: [['Register Number', 'Raw Mark', 'Total', 'Result']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [100, 116, 139] }
+        });
+
+        const finalY = doc.lastAutoTable.finalY || 72;
+        doc.text("__________________________", 14, finalY + 30);
+        doc.text("Course Instructor", 20, finalY + 40);
+        doc.text("__________________________", 130, finalY + 30);
+        doc.text("HOD Signature", 145, finalY + 40);
+
+        doc.save("Analytics_Report.pdf");
+        MOCK_FILES.push({ id: Date.now(), name: `Analytics_Report_${Date.now()}.pdf`, size: "26 KB", date: new Date().toLocaleDateString(), type: 'pdf', payload: JSON.stringify(studentData) });
+        saveFiles();
+        alert("Professional PDF Report exported with Range Distribution and saved in Files Module!");
+      };
+
+      return (
+        <div className="max-w-5xl mx-auto p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Mark Analysis Dashboard</h1>
+            <button onClick={downloadPDF} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded font-medium text-sm text-center flex items-center gap-2 transition">
+              Download PDF Report
+            </button>
+          </div>
+
+          <div className="grid grid-cols-4 gap-4 mb-8">
+            <div className="bg-white p-5 rounded-xl border border-slate-200">
+              <p className="text-slate-500 text-sm font-medium">Wrote Exam</p>
+              <h2 className="text-2xl font-bold text-slate-800 mt-1">{statWrote}</h2>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200">
+              <p className="text-slate-500 text-sm font-medium">Pass</p>
+              <h2 className="text-2xl font-bold text-success mt-1">{statPass}</h2>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200">
+              <p className="text-slate-500 text-sm font-medium">Fail</p>
+              <h2 className="text-2xl font-bold text-danger mt-1">{statFail}</h2>
+              <p className="text-xs text-red-500 mt-2 font-mono">
+                {studentData.filter(s => s.total !== 'AB' && s.total < 50).map(s => s.reg).join(', ') || 'No failures'}
+              </p>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200">
+              <p className="text-slate-500 text-sm font-medium">Absent</p>
+              <h2 className="text-2xl font-bold text-secondary mt-1">{statAbsent}</h2>
+              <p className="text-xs text-slate-400 mt-2 font-mono truncate">
+                {studentData.filter(s => s.total === 'AB').map(s => s.reg).join(', ') || 'None'}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col">
+              <h2 className="font-bold mb-4 text-slate-800">Grade Range Details</h2>
+              <table className="w-full text-left text-sm border-collapse border border-slate-100 rounded overflow-hidden">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="p-3 border-b text-slate-500 font-medium whitespace-nowrap">Mark Range</th>
+                    <th className="p-3 border-b text-slate-500 font-medium">Students</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr><td className="p-3 text-red-500 font-medium">Below 50 (Fail)</td><td className="p-3 font-bold">{r1}</td></tr>
+                  <tr><td className="p-3">50 - 60</td><td className="p-3 font-bold">{r2}</td></tr>
+                  <tr><td className="p-3">60 - 70</td><td className="p-3 font-bold">{r3}</td></tr>
+                  <tr><td className="p-3">70 - 80</td><td className="p-3 font-bold">{r4}</td></tr>
+                  <tr><td className="p-3 text-blue-600 font-medium">80 - 90</td><td className="p-3 font-bold">{r5}</td></tr>
+                  <tr><td className="p-3 text-success font-medium">90 - 100</td><td className="p-3 font-bold">{r6}</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6 h-96 flex flex-col">
+              <h2 className="font-bold mb-4">Live Grade Distribution Graph</h2>
+              <div className="flex-1 relative w-full h-full">
+                <canvas ref={canvasRef}></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- ROOT APP ROUTER ---
+    const App = () => {
+      const initUser = localStorage.getItem('VOICEMARK_AUTH');
+      const [route, setRoute] = useState(initUser ? 'dashboard' : 'login');
+      const [user, setUser] = useState(initUser);
+
+      // Simple Auth Wrapper
+      const navigate = (path) => {
+        if (!user && path !== 'login' && path !== 'signup') setRoute('login');
+        else setRoute(path);
+      };
+
+      const setAuth = (u) => {
+        setUser(u);
+        if (u) { localStorage.setItem('VOICEMARK_AUTH', u); }
+        else { localStorage.removeItem('VOICEMARK_AUTH'); }
+      };
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          <Navbar navigate={navigate} user={user} setAuth={setAuth} />
+          <div className="flex-1">
+            {route === 'login' && <Login setAuth={setAuth} navigate={navigate} />}
+            {route === 'signup' && <Signup navigate={navigate} />}
+            {route === 'dashboard' && <Dashboard navigate={navigate} />}
+            {route === 'mark-entry' && <MarkEntry navigate={navigate} />}
+            {route === 'files' && <FileManagement navigate={navigate} />}
+            {route === 'analytics' && <Analytics navigate={navigate} />}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+
+</html>
