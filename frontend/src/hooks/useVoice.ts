@@ -1,15 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-
-// TypeScript definitions for Web Speech API
-interface SpeechRecognitionErrorEvent extends Event {
-  error: 'no-speech' | 'audio-capture' | 'not-allowed' | 'network' | 'aborted' | 'language-not-supported' | 'service-not-allowed' | 'bad-grammar';
-  message: string;
-}
-
-interface SpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
-}
+import { useState } from 'react';
 
 // We extend any to bypass strict typing for vendor prefixes
 const WebSpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -21,20 +10,6 @@ export const useVoiceEntry = () => {
   const [voiceState, setVoiceState] = useState<VoiceState>('IDLE');
   const [tempRegNo, setTempRegNo] = useState<string>('');
   const [interimText, setInterimText] = useState<string>('');
-  const recognitionRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (!WebSpeechRecognition) return;
-
-    const recognition = new WebSpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognitionRef.current = recognition;
-
-    return () => recognition.stop();
-  }, []);
-
   const speak = (text: string) => {
     return new Promise((resolve) => {
       const synth = window.speechSynthesis;
@@ -45,38 +20,77 @@ export const useVoiceEntry = () => {
   };
 
   const listenForInput = async (): Promise<string> => {
-    if (!recognitionRef.current) return '';
-    return new Promise((resolve) => {
+    if (!WebSpeechRecognition) return '';
+    return new Promise((resolve, reject) => {
       setInterimText('');
       setIsListening(true);
-      recognitionRef.current.start();
+
+      let recognition: any;
+      try {
+        recognition = new WebSpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+      } catch (err) {
+        console.error("Failed to construct SpeechRecognition:", err);
+        setIsListening(false);
+        reject(err);
+        return;
+      }
       
       const onResult = (event: any) => {
         const results = event.results;
         const transcript = Array.from(results)
           .map((result: any) => result[0])
           .map((result: any) => result.transcript)
-          .join('');
+          .join(' ');
         
         setInterimText(transcript);
 
         if (results[results.length - 1].isFinal) {
-          recognitionRef.current.removeEventListener('result', onResult);
-          recognitionRef.current.removeEventListener('end', onEnd);
-          setIsListening(false);
+          cleanup();
           resolve(transcript.trim());
         }
       };
       
       const onEnd = () => {
-        recognitionRef.current.removeEventListener('result', onResult);
-        recognitionRef.current.removeEventListener('end', onEnd);
-        setIsListening(false);
+        cleanup();
         resolve('');
       };
 
-      recognitionRef.current.addEventListener('result', onResult);
-      recognitionRef.current.addEventListener('end', onEnd);
+      const onError = (event: any) => {
+        console.error("Speech recognition error:", event.error, event.message);
+        cleanup();
+        if (event.error === 'no-speech' || event.error === 'aborted') {
+          resolve('');
+        } else {
+          reject(new Error(event.error));
+        }
+      };
+
+      const cleanup = () => {
+        try {
+          recognition.removeEventListener('result', onResult);
+          recognition.removeEventListener('end', onEnd);
+          recognition.removeEventListener('error', onError);
+          recognition.stop();
+        } catch (e) {
+          // Ignore
+        }
+        setIsListening(false);
+      };
+
+      recognition.addEventListener('result', onResult);
+      recognition.addEventListener('end', onEnd);
+      recognition.addEventListener('error', onError);
+
+      try {
+        recognition.start();
+      } catch (err) {
+        console.warn("SpeechRecognition start error:", err);
+        cleanup();
+        reject(err);
+      }
     });
   };
 

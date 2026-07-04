@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import Breadcrumb from '../components/Breadcrumb';
-import { supabase } from '../lib/supabase';
+
 import { Download, Edit2, Trash2, FileSpreadsheet, Eye } from 'lucide-react';
 import { Link } from 'react-router-dom';
 

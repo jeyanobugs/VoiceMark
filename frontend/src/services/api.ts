@@ -1,4 +1,4 @@
-export const API_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL';
+export const API_URL = import.meta.env.VITE_GAS_API_URL || 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL';
 
 export const gasRequest = async (action: string, payload: any = {}) => {
   if (API_URL === 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL') {

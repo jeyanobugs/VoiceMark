@@ -42,10 +42,35 @@ const MarkEntry = () => {
     
     const parts = cleanText.split(' ');
     let result = '';
+    let currentNumber: number | null = null;
+    
     parts.forEach(p => {
-      if (/[0-9]+/.test(p)) result += p.replace(/\D/g, '');
-      else if (wordToNumMap[p] !== undefined) result += wordToNumMap[p].toString();
+      if (/[0-9]+/.test(p)) {
+        if (currentNumber !== null) {
+          result += currentNumber.toString();
+          currentNumber = null;
+        }
+        result += p.replace(/\D/g, '');
+      } else if (wordToNumMap[p] !== undefined) {
+        const val = wordToNumMap[p];
+        if (val >= 20 && val <= 90 && currentNumber === null) {
+          currentNumber = val;
+        } else if (val >= 1 && val <= 9 && currentNumber !== null) {
+          result += (currentNumber + val).toString();
+          currentNumber = null;
+        } else {
+          if (currentNumber !== null) {
+            result += currentNumber.toString();
+            currentNumber = null;
+          }
+          result += val.toString();
+        }
+      }
     });
+    
+    if (currentNumber !== null) {
+      result += String(currentNumber);
+    }
     
     return result || cleanText.replace(/\D/g, '');
   };
@@ -106,9 +131,19 @@ const MarkEntry = () => {
 
       setTimeout(runDictationCycle, 300);
 
-    } catch (e) {
-      console.error(e);
-      addLog('Error during voice capture');
+    } catch (e: any) {
+      console.error("Voice entry error:", e);
+      let errorMsg = 'Voice capture error';
+      if (e && e.message === 'not-allowed') {
+        errorMsg = 'Mic permission blocked. Please allow mic in browser settings.';
+      } else if (e && e.message === 'audio-capture') {
+        errorMsg = 'No microphone found.';
+      } else if (e && e.message === 'network') {
+        errorMsg = 'Network error during voice entry.';
+      }
+      addLog(`System Error: ${errorMsg}`);
+      await speak("Voice entry stopped due to error.");
+      setIsSessionActive(false);
     }
   };
 

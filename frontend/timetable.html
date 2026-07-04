@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEC Online Time Table Allocator System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        .sticky-header { position: sticky; top: 0; background-color: #ffffff; z-index: 40; border-bottom: 2px solid #e2e8f0; }
+        .locked-cell { background-color: #f0fdf4 !important; font-weight: 600; color: #16a34a; border: 2px solid #22c55e !important; }
+        .allocated-cell { background-color: #eff6ff !important; font-weight: 600; color: #1e40af; border: 2px solid #3b82f6 !important; padding: 10px; display: block; border-radius: 6px; }
+        .tutor-cell { background-color: #fdf4ff !important; font-weight: 700; color: #7e22ce; border: 2px solid #a855f7 !important; }
+        .table-matrix th { background-color: #1e3a8a; color: white; text-align: center; font-size: 11px; padding: 8px; border: 1px solid #cbd5e1; }
+        .table-matrix td { font-size: 11px; min-width: 120px; text-align: center; vertical-align: middle; white-space: pre-line; padding: 8px; border: 1px solid #cbd5e1; font-weight: 500; }
+        .break-cell { background-color: #fef08a !important; font-weight: bold; color: #dc2626; }
+        .pdf-page { page-break-after: always; padding: 25px; background: white; margin-bottom: 20px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .pdf-page:last-child { page-break-after: avoid; margin-bottom: 0; }
+        .bubble-period { width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; cursor: pointer; transition: all 0.2s; user-select: none; }
+        .bubble-green { background-color: #22c55e; color: white; border: 2px solid #16a34a; box-shadow: 0 2px 4px rgba(34, 197, 94, 0.2); }
+        .bubble-red { background-color: #ef4444; color: white; border: 2px solid #dc2626; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2); transform: scale(1.05); }
+        .faculty-btn { text-align: left; padding: 10px 14px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 2px solid #e2e8f0; transition: all 0.2s; background-color: white; cursor: pointer; }
+        .faculty-btn:hover { border-color: #cbd5e1; background-color: #f8fafc; }
+        .faculty-btn-selected { border-color: #2563eb !important; background-color: #eff6ff !important; color: #1e40af !important; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .faculty-btn-configured { background-color: #f1f5f9 !important; border-color: #f97316 !important; color: #c2410c !important; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen">
+
+    <div id="app">
+
+        <!-- STEP 0: AUTHENTICATION SCREEN -->
+        <section id="login-screen" class="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br from-blue-900 to-indigo-950">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center space-y-6">
+                <div>
+                    <h1 class="text-2xl font-bold text-blue-900 tracking-wide uppercase">National Engineering College</h1>
+                    <p class="text-sm text-slate-500 font-semibold tracking-wider mt-1">Kovilpatti</p>
+                    <div class="h-1 w-20 bg-blue-600 mx-auto mt-4 rounded-full"></div>
+                </div>
+                <h2 class="text-lg font-medium text-slate-700">Online Time Table Allocator System</h2>
+                <div class="space-y-4 text-left pt-2">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Username</label>
+                        <input type="text" id="username" class="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" value="admin">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Password</label>
+                        <input type="password" id="password" class="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" value="admin">
+                    </div>
+                </div>
+                <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition duration-200">Authenticate Access</button>
+            </div>
+        </section>
+
+        <!-- STEP 0.5: DEPT WISE TUTOR ALLOCATION -->
+        <section id="tutor-allocation-screen" class="hidden min-h-screen p-6 max-w-6xl mx-auto space-y-8">
+            <div class="bg-white rounded-2xl shadow-md p-6 border border-slate-200">
+                <div class="border-b pb-4 mb-6 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-2xl font-black text-blue-900 uppercase">Dept Wise Tutor Allocation</h2>
+                        <p class="text-slate-500 text-sm mt-1">
+                            Touch <b>"Drag &amp; Drop Faculty Selector"</b> for a department, choose one or more tutors, then press <b>OK</b>.
+                            A faculty already allocated to one department will automatically disappear from the option list of every other department.<br>
+                            <span class="text-purple-700 font-semibold">⚡ Each dept gets exactly 1 Tutor Hour per week (Mon–Fri). The engine will auto-find a slot where ALL selected tutors are simultaneously free.</span>
+                        </p>
+                    </div>
+                    <button onclick="navigateToPage('tutor-allocation-screen', 'login-screen')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                        ← Back to Login
+                    </button>
+                </div>
+
+                <div id="tutor-dept-list" class="space-y-4"></div>
+
+                <div class="mt-8 pt-6 border-t flex justify-end">
+                    <button onclick="goToBlockerHubFromTutor()" class="bg-blue-600 hover:bg-blue-700 text-white font-black px-12 py-4 rounded-xl shadow-md tracking-wide transition-all">
+                        Next: Go to Global Faculty Constraint Blocker Hub →
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 1: GLOBAL FACULTY CONSTRAINT BLOCKER -->
+        <section id="blocker-screen" class="hidden min-h-screen p-6 max-w-7xl mx-auto space-y-8">
+            <div class="bg-white rounded-2xl shadow-md p-6 border border-slate-200">
+                <div class="border-b pb-4 mb-6 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-2xl font-black text-blue-900 uppercase">Step 1: Global Faculty Constraint Blocker Hub</h2>
+                        <p class="text-slate-500 text-sm mt-1">Select a faculty box, change desired hour bubbles to <span class="text-red-600 font-bold">RED (Block)</span>, and click <b>"Save Current Faculty Rules"</b>.</p>
+                    </div>
+                    <button onclick="navigateToPage('blocker-screen', 'tutor-allocation-screen')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                        ← Back to Tutor Allocation
+                    </button>
+                </div>
+
+                <div class="space-y-6">
+                    <div>
+                        <h4 class="text-xs font-black uppercase text-blue-800 tracking-wider mb-2">Mathematics Faculty Registry</h4>
+                        <div id="pool-Mathematics" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-black uppercase text-blue-800 tracking-wider mb-2">Physics Faculty Registry</h4>
+                        <div id="pool-Physics" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-black uppercase text-blue-800 tracking-wider mb-2">Chemistry Faculty Registry</h4>
+                        <div id="pool-Chemistry" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+                    </div>
+                </div>
+
+                <div id="interactive-target-matrix" class="mt-12 border-t pt-8 bg-slate-50 p-4 rounded-2xl border scroll-mt-6">
+                    <h3 class="text-sm font-bold text-slate-800 mb-2 text-center bg-blue-50 py-2 rounded border border-blue-200">
+                        Interactive Bubble Schedule Map for Selected Faculty: <span id="active-faculty-label" class="text-blue-700 underline font-black">None Selected</span>
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-center border bg-white mt-4">
+                            <thead>
+                                <tr class="bg-slate-800 text-white text-[11px] tracking-wider uppercase font-bold">
+                                    <th class="p-3 text-left border w-24">Days</th>
+                                    <th class="p-2 border">Hour 1</th>
+                                    <th class="p-2 border">Hour 2</th>
+                                    <th class="p-2 border bg-amber-200 text-amber-900">Interval</th>
+                                    <th class="p-2 border">Hour 3</th>
+                                    <th class="p-2 border">Hour 4</th>
+                                    <th class="p-2 border bg-amber-200 text-amber-900">Lunch</th>
+                                    <th class="p-2 border">Hour 5</th>
+                                    <th class="p-2 border">Hour 6</th>
+                                    <th class="p-2 border bg-amber-200 text-amber-900">Interval</th>
+                                    <th class="p-2 border">Hour 7</th>
+                                    <th class="p-2 border">Hour 8</th>
+                                </tr>
+                            </thead>
+                            <tbody id="blocker-bubble-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="mt-6 flex justify-between items-center bg-white p-4 rounded-xl border">
+                        <div class="text-xs text-slate-500 font-medium">⚠️ Rules won't commit globally until you lock them down using the option to the right.</div>
+                        <button onclick="commitActiveFacultyRule()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 py-2 rounded-xl text-xs transition-all shadow-sm">
+                            Save Current Faculty Rules
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-6 border-t flex justify-end">
+                    <button onclick="exitBlockerToSemester()" class="bg-blue-600 hover:bg-blue-700 text-white font-black px-12 py-4 rounded-xl shadow-md tracking-wide transition-all">
+                        Complete Configuration & Move to Term Selection →
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 2: SEMESTER TERM SELECTION -->
+        <section id="semester-screen" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
+            <div class="max-w-2xl w-full text-center space-y-8 relative bg-white p-8 rounded-2xl shadow-sm border">
+                <button onclick="navigateToPage('semester-screen', 'blocker-screen')" class="absolute top-4 left-4 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                    ← Back to Step 1
+                </button>
+                <h3 class="text-3xl font-extrabold text-blue-900 pt-6">Select Active Target Academic Term</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <button onclick="selectSemester('ODD')" class="p-8 bg-white border-2 hover:border-blue-500 rounded-2xl shadow-md transition-all">
+                        <div class="text-4xl font-black text-blue-600 mb-2">ODD</div>
+                        <div class="text-slate-600 font-medium">Semesters I, III, V, VII</div>
+                    </button>
+                    <button onclick="selectSemester('EVEN')" class="p-8 bg-white border-2 hover:border-blue-500 rounded-2xl shadow-md transition-all">
+                        <div class="text-4xl font-black text-blue-600 mb-2">EVEN</div>
+                        <div class="text-slate-600 font-medium">Semesters II, IV, VI, VIII</div>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 3: DEPARTMENT CONFIGURATION MAP -->
+        <section id="department-screen" class="hidden min-h-screen p-8 max-w-6xl mx-auto space-y-8">
+            <div class="flex justify-between items-center border-b pb-4">
+                <h2 class="text-3xl font-black text-blue-900">Department Management Interface</h2>
+                <button onclick="navigateToPage('department-screen', 'semester-screen')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                    ← Back to Term Selection
+                </button>
+            </div>
+            <div id="dept-buttons-container" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+            <div class="pt-8 border-t flex justify-end">
+                <button onclick="proceedToGrids()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-10 py-4 rounded-xl shadow-lg transition-all">Proceed to Layout Generation</button>
+            </div>
+        </section>
+
+        <!-- STEP 4: SUBJECT COMPULSORY WIZARD -->
+        <section id="subject-screen" class="hidden min-h-screen p-8 max-w-7xl mx-auto space-y-6">
+            <div class="bg-white rounded-2xl shadow-md p-6 border">
+                <div class="flex justify-between items-center sticky-header py-2 mb-4">
+                    <h2 id="current-dept-title" class="text-2xl font-bold text-blue-900">Department</h2>
+                    <button onclick="navigateToPage('subject-screen', 'department-screen')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                        ← Back to Dept List
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="border-b text-slate-500 text-xs uppercase tracking-wider">
+                                <th class="py-3 px-4">Subject Name & Code</th>
+                                <th class="py-3 px-4 w-24">Credits</th>
+                                <th class="py-3 px-4">Subject Type</th>
+                                <th class="py-3 px-4">Faculty Allocation Layout Matrix (Max 3 Allowed - Optional)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subject-table-body"></tbody>
+                    </table>
+                </div>
+                <div class="mt-8 flex justify-between items-center">
+                    <button onclick="navigateDept(-1)" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl transition">Back</button>
+                    <button onclick="navigateDept(1)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3 rounded-xl transition">Next</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 5: TIMETABLE DASHBOARD GENERATOR -->
+        <section id="timetable-screen" class="hidden min-h-screen p-6 space-y-8">
+            <div class="max-w-7xl mx-auto flex justify-between items-center border-b pb-6">
+                <div>
+                    <h2 class="text-3xl font-black text-blue-900">Interactive Allocation Matrix Dashboard</h2>
+                    <p class="text-slate-500 font-medium">Click any empty cell to select ONLY your department's designated additional courses from the dropdown.</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="triggerEngineCalculation()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl shadow-md transition">Compute Matrix Auto-Fill</button>
+                    <button onclick="navigateToPage('timetable-screen', 'department-screen')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-5 py-3 rounded-xl transition flex items-center gap-1">
+                        ← Back to Configuration
+                    </button>
+                </div>
+            </div>
+
+            <div id="actionControlRegistry" class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 my-4">
+                <button onclick="downloadStudentPDF()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-md py-4 px-6 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2">
+                    🎓 Student Timetable Download (PDF)
+                </button>
+                <button onclick="downloadFacultyPDF()" class="w-full bg-red-600 hover:bg-red-700 text-white font-black text-md py-4 px-6 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2">
+                    👨🏫 Faculty Timetable Download (PDF)
+                </button>
+            </div>
+
+            <div id="timetable-grids-container" class="max-w-7xl mx-auto space-y-12"></div>
+        </section>
+
+    </div>
+
+    <script>
+        let globalState = {
+            semester: 'ODD', departments: [], subjects: {}, currentDeptIdx: 0,
+            manualGrids: {}, facultiesList: [], rawBackendMatrix: {},
+            globalBlockedRules: {}, activeFaculty: null, localSelectedBlockGrid: {},
+            // tutorAssignedFaculty stores final confirmed tutor picks per dept
+            // Format: { "Dept Name": ["Dr. X", "Dr. Y"] }
+            tutorAssignedFaculty: {}
+        };
+
+        const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const PERIODS = [
+            "09.15 A.M. - 10.05 A.M. (I)", "10.05 A.M. - 10.55 A.M. (II)", "10.55 A.M. - 11.10 A.M. (Interval)",
+            "11.10 A.M. - 12.00 P.M. (III)", "12.00 P.M. - 12.50 P.M. (IV)", "12.50 P.M. - 01.50 P.M. (Lunch)",
+            "01.50 P.M. - 02.40 P.M. (V)", "02.40 P.M. - 03.30 P.M. (VI)", "03.30 P.M. - 03.45 P.M. (Interval)",
+            "03.45 P.M. - 04.30 P.M. (VII)", "04.30 P.M. - 05.15 P.M. (VIII)"
+        ];
+
+        const ADDITIONAL_COURSES_REGISTRY = {
+            "Mechanical Engineering": [{ name: "23ME11C Engineering Graphics", faculty: "Dr. P. Anand" }],
+            "Electronics and Communication Engineering": [
+                { name: "23CS11C Problem Solving Techniques", faculty: "Prof. R. Bala" },
+                { name: "23EE12C Electrical Engineering", faculty: "Prof. M. Dinesh" }
+            ],
+            "Computer Science and Engineering": [
+                { name: "23CS11C Problem Solving Techniques", faculty: "Prof. R. Bala" },
+                { name: "23EE11C Basic Electrical and Electronics Engineering", faculty: "Dr. K. Eshwari" }
+            ],
+            "Electrical and Electronics Engineering": [
+                { name: "23ME11C Engineering Graphics", faculty: "Dr. P. Anand" },
+                { name: "23EE14C Engineering Practice", faculty: "Dr. K. Eshwari" }
+            ],
+            "Civil Engineering": [
+                { name: "23ME11C Engineering Graphics", faculty: "Dr. P. Anand" },
+                { name: "23EE13C Fundamentals of Electrical and Electronics Engineering", faculty: "Prof. M. Dinesh" }
+            ],
+            "Information Technology": [
+                { name: "23ME11C Engineering Graphics", faculty: "Dr. P. Anand" },
+                { name: "23CS11C Problem Solving Techniques", faculty: "Prof. R. Bala" }
+            ],
+            "Artificial Intelligence and Data Science": [
+                { name: "23ME11C Engineering Graphics", faculty: "Dr. P. Anand" },
+                { name: "23CS11C Problem Solving Techniques", faculty: "Prof. R. Bala" }
+            ]
+        };
+
+        function navigateToPage(hideId, showId) {
+            document.getElementById(hideId).classList.add('hidden');
+            document.getElementById(showId).classList.remove('hidden');
+        }
+
+        function handleLogin() {
+            const user = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            if (user === "admin" && pass === "admin") {
+                navigateToPage('login-screen', 'tutor-allocation-screen');
+                initTutorAllocationInterface();
+            } else {
+                alert("Invalid Credentials! Default is admin / admin");
+            }
+        }
+
+        function goToBlockerHubFromTutor() {
+            navigateToPage('tutor-allocation-screen', 'blocker-screen');
+            initFacultyBlockerInterface();
+        }
+
+        // ---------- DEPT WISE TUTOR ALLOCATION ----------
+        function cssId(str) {
+            return String(str).replace(/[^a-zA-Z0-9]/g, '_');
+        }
+
+        async function initTutorAllocationInterface() {
+            if (!globalState.tutorInitialized) {
+                let meta = {
+                    departments: ["Mechanical Engineering", "Electronics and Communication Engineering", "Computer Science and Engineering", "Electrical and Electronics Engineering", "Information Technology", "Civil Engineering", "Artificial Intelligence and Data Science"],
+                    all_faculties: []
+                };
+                try {
+                    const res = await fetch('/api/meta');
+                    if (res.ok) meta = await res.json();
+                } catch (e) {
+                    console.warn("Using fallback local department/faculty list for tutor allocation.");
+                }
+
+                let allFac = meta.all_faculties;
+                if (!allFac || !allFac.length) {
+                    allFac = [];
+                    Object.keys(meta.registry || {}).forEach(cat => { allFac = allFac.concat(meta.registry[cat] || []); });
+                    allFac = Array.from(new Set(allFac)).sort();
+                }
+
+                globalState.tutorDepartments = meta.departments;
+                globalState.tutorPoolFaculty = allFac;
+                // tutorAssignedFaculty is already in globalState (persists across re-inits)
+                globalState.tutorSuccessMsg = {};
+                globalState.tutorDeptOpen = null;
+                globalState.tutorWorking = [];
+                globalState.tutorInitialized = true;
+            }
+            renderTutorAllocationScreen();
+        }
+
+        function openTutorFacultyPicker(dept) {
+            globalState.tutorDeptOpen = dept;
+            globalState.tutorWorking = (globalState.tutorAssignedFaculty[dept] || []).slice();
+            renderTutorAllocationScreen();
+        }
+
+        function toggleTutorFacultySelection(dept, fac) {
+            if (globalState.tutorDeptOpen !== dept) return;
+            const idx = globalState.tutorWorking.indexOf(fac);
+            if (idx >= 0) { globalState.tutorWorking.splice(idx, 1); }
+            else { globalState.tutorWorking.push(fac); }
+            renderTutorAllocationScreen();
+        }
+
+        function confirmTutorAllocation(dept) {
+            if (!globalState.tutorWorking || globalState.tutorWorking.length === 0) {
+                alert("Please choose at least one faculty before pressing OK!");
+                return;
+            }
+            // Save to BOTH tutorAssignedFaculty (UI state) AND globalState.tutorAssignedFaculty (used at generate time)
+            globalState.tutorAssignedFaculty[dept] = globalState.tutorWorking.slice();
+            globalState.tutorSuccessMsg[dept] = `✅ ${dept} — Tutor(s): ${globalState.tutorWorking.join(', ')}  |  1 Tutor Hour/week will be auto-allocated when all are free.`;
+            globalState.tutorDeptOpen = null;
+            globalState.tutorWorking = [];
+            renderTutorAllocationScreen();
+        }
+
+        function renderTutorAllocationScreen() {
+            const container = document.getElementById('tutor-dept-list');
+            if (!container) return;
+            container.innerHTML = '';
+
+            (globalState.tutorDepartments || []).forEach(dept => {
+                const committedAssigned = globalState.tutorAssignedFaculty[dept] || [];
+                const isOpen = globalState.tutorDeptOpen === dept;
+
+                const usedElsewhere = new Set();
+                Object.keys(globalState.tutorAssignedFaculty).forEach(d => {
+                    if (d !== dept) (globalState.tutorAssignedFaculty[d] || []).forEach(f => usedElsewhere.add(f));
+                });
+                const availableForThisDept = globalState.tutorPoolFaculty.filter(f => !usedElsewhere.has(f));
+                const highlightSet = isOpen ? globalState.tutorWorking : committedAssigned;
+
+                const card = document.createElement('div');
+                card.className = "border rounded-2xl p-5 bg-slate-50";
+
+                const headerRow = document.createElement('div');
+                headerRow.className = "flex justify-between items-center flex-wrap gap-3";
+                headerRow.innerHTML = `
+                    <div>
+                        <div class="font-black text-blue-900">${dept}</div>
+                        <div class="text-xs text-slate-500 mt-1">${committedAssigned.length ? 'Allocated Tutor(s): ' + committedAssigned.join(', ') : 'No tutor allocated yet'}</div>
+                    </div>
+                `;
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = "bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2 rounded-xl text-xs flex items-center gap-2";
+                toggleBtn.innerHTML = "🖱️ Drag &amp; Drop Faculty Selector";
+                toggleBtn.onclick = () => openTutorFacultyPicker(dept);
+                headerRow.appendChild(toggleBtn);
+                card.appendChild(headerRow);
+
+                const successDiv = document.createElement('div');
+                successDiv.className = "text-xs font-bold text-emerald-700 mt-2";
+                successDiv.innerText = globalState.tutorSuccessMsg[dept] || '';
+                card.appendChild(successDiv);
+
+                if (isOpen) {
+                    const picker = document.createElement('div');
+                    picker.className = "mt-4 bg-white border rounded-xl p-4 space-y-3";
+
+                    const label = document.createElement('div');
+                    label.className = "text-xs font-bold text-slate-500 uppercase";
+                    label.innerText = `Tap faculty names to select tutor(s) for ${dept}`;
+                    picker.appendChild(label);
+
+                    const grid = document.createElement('div');
+                    grid.className = "grid grid-cols-2 md:grid-cols-4 gap-2";
+
+                    if (availableForThisDept.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.className = "col-span-full text-xs text-red-600 font-semibold";
+                        empty.innerText = "No faculty left — all faculty have already been allocated to other departments.";
+                        grid.appendChild(empty);
+                    }
+
+                    availableForThisDept.forEach(fac => {
+                        const fbtn = document.createElement('button');
+                        fbtn.className = "faculty-btn" + (highlightSet.includes(fac) ? " faculty-btn-selected" : "");
+                        fbtn.id = `tutor-fac-btn-${cssId(dept)}-${cssId(fac)}`;
+                        fbtn.innerText = fac;
+                        fbtn.onclick = () => toggleTutorFacultySelection(dept, fac);
+                        grid.appendChild(fbtn);
+                    });
+                    picker.appendChild(grid);
+
+                    const okRow = document.createElement('div');
+                    okRow.className = "flex justify-end pt-2";
+                    const okBtn = document.createElement('button');
+                    okBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2 rounded-xl text-xs";
+                    okBtn.innerText = "OK - Confirm Allocation";
+                    okBtn.onclick = () => confirmTutorAllocation(dept);
+                    okRow.appendChild(okBtn);
+                    picker.appendChild(okRow);
+                    card.appendChild(picker);
+                }
+
+                container.appendChild(card);
+            });
+        }
+
+        async function initFacultyBlockerInterface() {
+            let meta = { registry: { "Mathematics": ["Dr. P. Anand", "Prof. R. Bala"], "Physics": ["Dr. S. Selvam"], "Chemistry": ["Dr. M. Mani"] } };
+            try {
+                const res = await fetch('/api/meta');
+                if(res.ok) meta = await res.json();
+            } catch(e) {
+                console.warn("Using fallback local registry structure.");
+            }
+
+            ["Mathematics", "Physics", "Chemistry"].forEach(cat => {
+                let targetContainer = document.getElementById(`pool-${cat}`);
+                if(targetContainer && meta.registry[cat]) {
+                    targetContainer.innerHTML = '';
+                    meta.registry[cat].forEach(fac => {
+                        let btn = document.createElement('button');
+                        btn.className = "faculty-btn";
+                        btn.id = `fac-btn-${fac.replace(/\s+/g, '_')}`;
+                        btn.innerText = fac;
+                        btn.onclick = () => selectFacultyForBlocking(fac);
+                        targetContainer.appendChild(btn);
+                    });
+                }
+            });
+            renderBlockerBubbleTable();
+        }
+
+        function selectFacultyForBlocking(facName) {
+            globalState.activeFaculty = facName;
+            document.getElementById('active-faculty-label').innerText = facName;
+            document.querySelectorAll('.faculty-btn').forEach(b => b.classList.remove('faculty-btn-selected'));
+            let activeBtn = document.getElementById(`fac-btn-${facName.replace(/\s+/g, '_')}`);
+            if(activeBtn) activeBtn.classList.add('faculty-btn-selected');
+            globalState.localSelectedBlockGrid = globalState.globalBlockedRules[facName] || {};
+            renderBlockerBubbleTable();
+            document.getElementById('interactive-target-matrix').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function renderBlockerBubbleTable() {
+            const tbody = document.getElementById('blocker-bubble-tbody');
+            tbody.innerHTML = '';
+            DAYS.forEach(day => {
+                let tr = document.createElement('tr');
+                tr.innerHTML += `<td class="p-3 border font-bold text-xs bg-slate-100 text-left">${day}</td>`;
+                let regularHourCounter = 1;
+                PERIODS.forEach(p => {
+                    if(p.includes("Interval") || p.includes("Lunch")) {
+                        tr.innerHTML += `<td class="p-2 border bg-amber-100 font-bold text-[10px] text-amber-800">BREAK</td>`;
+                    } else {
+                        let isBlocked = globalState.localSelectedBlockGrid[day]?.[p] || false;
+                        tr.innerHTML += `
+                            <td class="p-2 border">
+                                <div onclick="toggleBubbleStatus('${day}', '${p}', this)"
+                                     class="bubble-period ${isBlocked ? 'bubble-red' : 'bubble-green'}" title="${p}">
+                                    ${regularHourCounter}
+                                </div>
+                            </td>
+                        `;
+                        regularHourCounter++;
+                    }
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        function toggleBubbleStatus(day, period, element) {
+            if(!globalState.activeFaculty) {
+                alert("Please select a faculty box first!");
+                return;
+            }
+            if(!globalState.localSelectedBlockGrid[day]) globalState.localSelectedBlockGrid[day] = {};
+            let currentStatus = globalState.localSelectedBlockGrid[day][period] || false;
+            let nextStatus = !currentStatus;
+            globalState.localSelectedBlockGrid[day][period] = nextStatus;
+            element.className = "bubble-period " + (nextStatus ? 'bubble-red' : 'bubble-green');
+        }
+
+        function commitActiveFacultyRule() {
+            if(!globalState.activeFaculty) { alert("Choose a faculty to save changes!"); return; }
+            globalState.globalBlockedRules[globalState.activeFaculty] = JSON.parse(JSON.stringify(globalState.localSelectedBlockGrid));
+            let activeBtn = document.getElementById(`fac-btn-${globalState.activeFaculty.replace(/\s+/g, '_')}`);
+            if(activeBtn) {
+                activeBtn.classList.add('faculty-btn-configured');
+                if(!activeBtn.innerText.includes('✓')) activeBtn.innerText += " ✓";
+            }
+            alert(`Constraints updated for ${globalState.activeFaculty}`);
+        }
+
+        function exitBlockerToSemester() {
+            navigateToPage('blocker-screen', 'semester-screen');
+        }
+
+        async function selectSemester(sem) {
+            globalState.semester = sem;
+            navigateToPage('semester-screen', 'department-screen');
+
+            let data = {
+                departments: ["Computer Science and Engineering", "Information Technology", "Electronics and Communication Engineering"],
+                faculties_list: ["Dr. P. Anand", "Prof. R. Bala", "Prof. M. Dinesh", "Dr. K. Eshwari", "Dr. S. Selvam"],
+                subjects: {
+                    "Computer Science and Engineering": [
+                        { name: "Data Structures", code: "23CS31C", credits: 4, type: "Theory", faculties: ["Dr. P. Anand", "Prof. R. Bala"] },
+                        { name: "Digital Logic", code: "23CS32C", credits: 3, type: "Theory", faculties: ["Prof. M. Dinesh", "Dr. K. Eshwari"] }
+                    ],
+                    "Information Technology": [
+                        { name: "Web Technology", code: "23IT31C", credits: 4, type: "Theory", faculties: ["Prof. R. Bala", "Dr. S. Selvam"] }
+                    ],
+                    "Electronics and Communication Engineering": [
+                        { name: "Signals & Systems", code: "23EC31C", credits: 4, type: "Theory", faculties: ["Prof. M. Dinesh", "Dr. K. Eshwari"] }
+                    ]
+                }
+            };
+
+            try {
+                const res = await fetch(`/api/subjects?semester=${sem}`);
+                if(res.ok) data = await res.json();
+            } catch(e) {
+                console.warn("API Error, utilizing standalone local dataset mapping.");
+            }
+
+            globalState.departments = data.departments;
+            globalState.subjects = data.subjects;
+            globalState.facultiesList = data.faculties_list;
+
+            Object.keys(globalState.subjects).forEach(dept => {
+                globalState.subjects[dept].forEach(sub => {
+                    if(!sub.selected_faculties) {
+                        sub.selected_faculties = sub.selected_faculty ? [sub.selected_faculty, "", ""] : ["", "", ""];
+                    }
+                    while(sub.selected_faculties.length < 3) sub.selected_faculties.push("");
+                    // Preserve typing_faculty flag from API (for the 6 special subjects)
+                    if (sub.typing_faculty === undefined) sub.typing_faculty = false;
+                });
+            });
+
+            initManualGrids();
+            renderDepartmentMenu();
+        }
+
+        function initManualGrids() {
+            globalState.departments.forEach(dept => {
+                globalState.manualGrids[dept] = {};
+                DAYS.forEach(day => {
+                    globalState.manualGrids[dept][day] = {};
+                    PERIODS.forEach(p => {
+                        globalState.manualGrids[dept][day][p] = (p.includes("Interval") || p.includes("Lunch")) ? "BREAK" : "---";
+                    });
+                });
+            });
+        }
+
+        function renderDepartmentMenu() {
+            const container = document.getElementById('dept-buttons-container');
+            container.innerHTML = '';
+            globalState.departments.forEach((dept, idx) => {
+                const card = document.createElement('button');
+                card.className = "p-6 bg-white border rounded-2xl shadow-sm text-left hover:shadow-md border-l-4 border-l-blue-600 transition-all";
+                card.onclick = () => openSubjectWizard(idx);
+                card.innerHTML = `<div class='font-bold text-slate-800 text-sm'>${dept}</div><div class='text-xs font-semibold text-slate-400 mt-2'>Configure Custom Course Matrix</div>`;
+                container.appendChild(card);
+            });
+        }
+
+        function openSubjectWizard(idx) {
+            globalState.currentDeptIdx = idx;
+            navigateToPage('department-screen', 'subject-screen');
+            renderSubjectConfiguration();
+        }
+
+        function renderSubjectConfiguration() {
+            const dept = globalState.departments[globalState.currentDeptIdx];
+            document.getElementById('current-dept-title').innerText = dept;
+            const tbody = document.getElementById('subject-table-body');
+            tbody.innerHTML = '';
+
+            // These 6 subjects always use text input (typing) for faculty name
+            const TYPING_SUBJECTS = [
+                "engineering graphics",
+                "introduction to engineering",
+                "problem solving techniques",
+                "basic electrical and electronics engineering",
+                "engineering practice",
+                "fundamentals of electrical and electronics engineering"
+            ];
+
+            let list = globalState.subjects[dept] || [];
+            list.forEach((sub, subIdx) => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b hover:bg-slate-50";
+
+                const isTyping = sub.typing_faculty ||
+                    TYPING_SUBJECTS.includes(sub.name.trim().toLowerCase());
+
+                let sf = sub.selected_faculties || ["", "", ""];
+
+                let facultyColHtml = '';
+
+                if (isTyping) {
+                    // ── TYPING INPUT MODE ─────────────────────────────────────────
+                    // Single text input for primary faculty name (free-text, no dropdown)
+                    const currentVal = (sf[0] || sub.selected_faculty || '').trim();
+                    facultyColHtml = `
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-2 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2">
+                                <span class="text-amber-700 font-black text-lg">✏️</span>
+                                <div class="flex-1">
+                                    <div class="text-[9px] uppercase font-bold text-amber-700 mb-1">Type Faculty Name (Free Entry)</div>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Dr. A. Kumar"
+                                        value="${currentVal}"
+                                        oninput="updateTypingFacultyField(${subIdx}, this.value)"
+                                        class="w-full border border-amber-300 rounded-lg px-3 py-1.5 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-slate-300"
+                                    />
+                                </div>
+                            </div>
+                            <div class="text-[10px] text-amber-600 font-medium px-1">
+                                ⚠️ This subject's faculty is not in the registry — type the assigned faculty name directly.
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // ── DROPDOWN SELECT MODE (existing behaviour) ─────────────────
+                    facultyColHtml = `<div class="grid grid-cols-1 md:grid-cols-3 gap-2">`;
+                    for (let fIdx = 0; fIdx < 3; fIdx++) {
+                        let chosen = sf[fIdx] || "";
+                        let isCompulsory = (fIdx === 0) ? 'border-blue-300 ring-1 ring-blue-100 font-bold' : '';
+                        let placeholderText = (fIdx === 0) ? 'Primary Faculty' : `Assistant Faculty ${fIdx + 1} (Optional)`;
+                        let optionsStr = `<option value="">-- Leave Empty --</option>`;
+                        (sub.faculties || []).forEach(fac => {
+                            optionsStr += `<option value="${fac}" ${chosen === fac ? 'selected' : ''}>${fac}</option>`;
+                        });
+                        facultyColHtml += `
+                            <div class="flex flex-col space-y-1">
+                                <span class="text-[9px] uppercase font-bold text-slate-400">${placeholderText}</span>
+                                <select onchange="updateMultiFacultyField(${subIdx}, ${fIdx}, this.value)"
+                                        class="border text-xs rounded p-1.5 bg-white w-full ${isCompulsory}">
+                                    ${optionsStr}
+                                </select>
+                            </div>
+                        `;
+                    }
+                    facultyColHtml += `</div>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="py-4 px-4 font-semibold text-xs text-slate-700">
+                        ${sub.name}
+                        <br><span class="text-[10px] text-slate-400 font-mono">${sub.code}</span>
+                        ${isTyping ? '<br><span class="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md mt-1 inline-block">✏️ TYPING INPUT</span>' : ''}
+                    </td>
+                    <td class="py-4 px-4">
+                        <input type="number" onchange="updateSubjectField(${subIdx}, 'credits', this.value)"
+                               value="${sub.credits}"
+                               class="w-16 border rounded p-1 text-center font-bold text-xs">
+                    </td>
+                    <td class="py-4 px-4">
+                        <span class="px-2 py-1 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-md">${sub.type}</span>
+                    </td>
+                    <td class="py-4 px-4">${facultyColHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateMultiFacultyField(subIdx, arrayPos, val) {
+            const dept = globalState.departments[globalState.currentDeptIdx];
+            if(!globalState.subjects[dept][subIdx].selected_faculties) {
+                globalState.subjects[dept][subIdx].selected_faculties = ["", "", ""];
+            }
+            globalState.subjects[dept][subIdx].selected_faculties[arrayPos] = val;
+            if(arrayPos === 0) globalState.subjects[dept][subIdx].selected_faculty = val;
+        }
+
+        // NEW: handler for typing-input subjects (the 6 special ones)
+        // Stores the typed faculty name into selected_faculties[0] and selected_faculty
+        function updateTypingFacultyField(subIdx, val) {
+            const dept = globalState.departments[globalState.currentDeptIdx];
+            const sub = globalState.subjects[dept][subIdx];
+            if (!sub.selected_faculties) sub.selected_faculties = ["", "", ""];
+            sub.selected_faculties[0] = val.trim();
+            sub.selected_faculty = val.trim();
+            // Mark as typing subject so generate API skips registry validation
+            sub.typing_faculty = true;
+        }
+
+        function updateSubjectField(subIdx, field, val) {
+            const dept = globalState.departments[globalState.currentDeptIdx];
+            globalState.subjects[dept][subIdx][field] = field === 'credits' ? parseInt(val) || 0 : val;
+        }
+
+        function navigateDept(direction) {
+            let nextIdx = globalState.currentDeptIdx + direction;
+            if(nextIdx >= 0 && nextIdx < globalState.departments.length) {
+                globalState.currentDeptIdx = nextIdx;
+                renderSubjectConfiguration();
+            } else {
+                navigateToPage('subject-screen', 'department-screen');
+                renderDepartmentMenu();
+            }
+        }
+
+        function proceedToGrids() {
+            navigateToPage('department-screen', 'timetable-screen');
+            renderTimetableGrids();
+        }
+
+        // Build the inner HTML for a single manual-grid cell (td contents)
+        function buildManualCell(dept, day, p) {
+            if (p.includes("Interval") || p.includes("Lunch")) {
+                return `<td class="border p-2 bg-amber-50 font-bold text-[10px] text-amber-700 text-center">BREAK</td>`;
+            }
+
+            const safeDay  = day.replace(/'/g, "\\'");
+            const safePrd  = p.replace(/'/g, "\\'");
+            const safeDept = dept.replace(/'/g, "\\'");
+
+            let cellText = globalState.manualGrids[dept]?.[day]?.[p] || "---";
+            const isSelected = cellText.trim() !== "---";
+
+            // Extract short course name for the visual label (before the \n)
+            let labelText = "";
+            if (isSelected) {
+                labelText = cellText.split("\n")[0].replace(/^\d+\w*\s+/, "").trim();
+                // strip code prefix like "23ME11C "
+                labelText = labelText.replace(/^23\w+\s+/, "").trim();
+            }
+
+            let optionsHtml = `<option value="---">--- Empty Cell ---</option>`;
+            if (ADDITIONAL_COURSES_REGISTRY[dept]) {
+                ADDITIONAL_COURSES_REGISTRY[dept].forEach(course => {
+                    const sig = `${course.name} \n [${course.faculty}]`;
+                    const isSel = (cellText.trim() === sig.trim()) ? 'selected' : '';
+                    optionsHtml += `<option value="${course.name}||${course.faculty}" ${isSel}>${course.name}</option>`;
+                });
+            }
+
+            // Cell background & label styling: green when chosen, plain when empty
+            const tdClass = isSelected
+                ? 'border p-1 bg-emerald-50'
+                : 'border p-1 bg-white';
+
+            const labelHtml = isSelected
+                ? `<div class="text-[9px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 rounded px-1 py-0.5 mb-1 truncate" title="${labelText}">✅ ${labelText}</div>`
+                : '';
+
+            const selectClass = isSelected
+                ? 'w-full text-[10px] p-1 rounded border border-emerald-400 bg-emerald-50 text-emerald-800 font-bold focus:ring-1 focus:ring-emerald-500'
+                : 'w-full bg-slate-50 text-[10px] p-1.5 rounded border text-slate-500 focus:ring-1 focus:ring-blue-500';
+
+            return `
+                <td class="${tdClass}" id="mcell-${cssEsc(dept)}-${cssEsc(day)}-${cssEsc(p)}">
+                    ${labelHtml}
+                    <select onchange="updateManualGridCell('${safeDept}','${safeDay}','${safePrd}',this.value)"
+                            class="${selectClass}">
+                        ${optionsHtml}
+                    </select>
+                </td>
+            `;
+        }
+
+        // Escape special chars for use in DOM id attributes
+        function cssEsc(str) { return str.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+        function renderTimetableGrids() {
+            const container = document.getElementById('timetable-grids-container');
+            container.innerHTML = '';
+            globalState.departments.forEach(dept => {
+                const section = document.createElement('div');
+                section.className = "bg-white border rounded-2xl p-6 space-y-4 shadow-sm";
+
+                let headMarkup = PERIODS.map(p => `<th class="border p-2 min-w-[120px] text-[10px]">${p}</th>`).join('');
+                let rowsMarkup = DAYS.map(day => {
+                    let rowCells = PERIODS.map(p => buildManualCell(dept, day, p)).join('');
+                    return `<tr><td class="border p-2 font-bold text-xs bg-slate-100 text-left w-24">${day}</td>${rowCells}</tr>`;
+                }).join('');
+
+                section.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xl font-bold text-blue-900">${dept}</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-center bg-white">
+                            <thead>
+                                <tr class="bg-slate-800 text-white">
+                                    <th class="border p-2 text-left w-24 text-[11px] uppercase tracking-wider">Days</th>
+                                    ${headMarkup}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsMarkup}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                container.appendChild(section);
+            });
+        }
+
+        // Function to handle manual selection in the timetable grids
+        function updateManualGridCell(dept, day, p, value) {
+            if (globalState.manualGrids[dept] && globalState.manualGrids[dept][day]) {
+                globalState.manualGrids[dept][day][p] = value;
+                // Re-render grids to show the updated cell styling and labels
+                renderTimetableGrids();
+            }
+        }
+
+        // Placeholder functions for the action buttons
+        function triggerEngineCalculation() {
+            alert("Matrix Auto-Fill Computation Triggered! (Backend logic pending)");
+        }
+
+        function downloadStudentPDF() {
+            alert("Student Timetable PDF download initiated!");
+        }
+
+        function downloadFacultyPDF() {
+            alert("Faculty Timetable PDF download initiated!");
+        }
+
+        // Initialize the app by showing the login screen first
+        handleLogin(); // By default this acts as auto-login to trigger init for demo
+    </script>
+</body>
+</html>

@@ -1,4 +1,3 @@
-import React from 'react';
 import Navbar from '../components/Navbar';
 import { Users, FileText, CheckCircle, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
